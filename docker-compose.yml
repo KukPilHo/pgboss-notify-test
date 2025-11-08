@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL 데이터베이스 서비스
+  postgres:
+    image: postgres:14-alpine
+    container_name: pgboss_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: pgboss
+    ports:
+      - "5432:5432" # 로컬에서 DB에 접근할 경우 (옵션)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # 2. Node.js 앱이 시작되기 전 DB가 준비되었는지 확인하는 Healthcheck
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d pgboss"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 3. Node.js 애플리케이션 서비스 (API + pg-boss 워커)
+  node-app:
+    build:
+      context: ./app  # ./app 디렉터리의 Dockerfile을 사용
+    container_name: pgboss_app
+    ports:
+      - "3000:3000"   # API 서버 포트
+    # 4. DB 연결 정보 (app/index.js에서 process.env로 읽음)
+    environment:
+      DB_HOST: postgres # docker-compose 네트워크 내의 서비스 이름
+      DB_PORT: 5432
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: pgboss
+      PORT: 3000
+    # 5. postgres 서비스가 'healthy' 상태가 된 이후에 node-app을 시작
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data: # DB 데이터 영속성을 위한 볼륨
